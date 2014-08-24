@@ -1,0 +1,71 @@
+---
+title: "Practical Machine Learning Project"
+author: "Vu Nguyen"
+date: "August 24, 2014"
+output: html_document
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(cache=TRUE)
+```
+
+Data preprocessing
+----------------
+
+We load the training and testing data into variables `Train` and `Test`.
+```{r, message=FALSE}
+library(caret)
+Train = read.csv("pml-training.csv")
+Test = read.csv("pml-testing.csv")
+```
+
+Upon `str(Train)` inspection, we find that many columns (out of 160) contain mostly `NA`s. We remove these columns in the first pass of cleaning process.
+
+```{r}
+nNAs = apply(Train, 2, function(col) {
+  sum(is.na(col) | col == "")
+})
+Train = Train[ , -which(nNAs > 0.9 * length(Train$classe))]
+```
+
+We also remove columns which have near zero variance, i.e. they don't contribute to the model.
+```{r}
+Train = Train[ , -nearZeroVar(Train)]
+```
+
+In the final pass, we will remove columns that has nothing to do with the model, such as `user_name`, `raw_timestamp_part_1`, etc.
+
+```{r}
+Train = Train[ , !names(Train) %in% c("X", "user_name", "raw_timestamp_part_1", "raw_timestamp_part_2", "cvtd_timestamp", "new_window", "num_window")]
+dim(Train)
+```
+
+We are now left with tidy data, ready to build some models.
+
+Model Construction
+------------
+We will construct a Random Forests (rf) model. It's relatively simple to set this up and have it running. We first partition our `Train` data into `training` and `testing` to verify out-of-sample error.
+
+```{r}
+trainIndex = createDataPartition(Train$classe, p = 0.75, list = F)
+training = Train[trainIndex, ]
+testing = Train[-trainIndex, ]
+fitCtrl = trainControl(method="cv", number = 5, verboseIter = F)
+rfFit = train(classe ~ ., data=training, method="rf", trControl = fitCtrl, verbose=F)
+rfFit
+```
+
+Confusion matrix on the `testing` set. The result is great.
+
+```{r}
+confusionMatrix(predict(rfFit, testing), testing$classe)
+```
+
+Finally, we run `rfFit` on `Test`, obtaining the following result.
+```{r}
+predict(rfFit, Test)
+```
+
+Reference
+------------
+Ugulino, W.; Cardador, D.; Vega, K.; Velloso, E.; Milidiu, R.; Fuks, H. Wearable Computing: Accelerometers' Data Classification of Body Postures and Movements. Proceedings of 21st Brazilian Symposium on Artificial Intelligence. Advances in Artificial Intelligence - SBIA 2012. In: Lecture Notes in Computer Science. , pp. 52-61. Curitiba, PR: Springer Berlin / Heidelberg, 2012. ISBN 978-3-642-34458-9. DOI: 10.1007/978-3-642-34459-6_6.
